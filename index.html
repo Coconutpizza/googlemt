@@ -4,7 +4,8 @@
 
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Astartes MoCap - MediaPipe, working version</title>
+    <link rel="icon" href="data:;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==">
+    <title>google MLKIT demo</title>
     <style>
         body {
             margin: 0;
@@ -62,7 +63,7 @@
     <div id="overlay">
         <button id="toggleMenuBtn" title="Toggle Menu">≡</button>
         <div id="menuContent">
-            <h2>Astartes MoCap</h2>
+            <h2>MLKIT demo</h2>
             <div id="status" style="color: rgb(0, 255, 170);">MoCap Active!</div>
             <div class="hint">WASD to Move • Right Click to Steer<br>Drag to orbit • Scroll to zoom</div>
             <button id="calibBtn">CALIBRATE (T-POSE)</button>
@@ -320,7 +321,44 @@
 
     <script type="module">
         import { FilesetResolver, PoseLandmarker } from 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/+esm';
-        import { LandmarkFilter } from './js/filter.js';
+        
+        // LandmarkFilter (One-Euro Filter) - Inlined for standalone deployment
+        class LandmarkFilter {
+            constructor(numLandmarks, frequency, minCutoff, beta) {
+                this.f = frequency;
+                this.minCutoff = minCutoff;
+                this.beta = beta;
+                this.prevValues = Array.from({ length: numLandmarks }, () => ({ x: 0, y: 0, z: 0 }));
+                this.prevDerivatives = Array.from({ length: numLandmarks }, () => ({ x: 0, y: 0, z: 0 }));
+            }
+            alpha(cutoff) {
+                const tau = 1.0 / (2 * Math.PI * cutoff);
+                const te = 1.0 / this.f;
+                return 1.0 / (1.0 + tau / te);
+            }
+            filter(landmarks) {
+                if (!landmarks) return null;
+                return landmarks.map((lm, i) => {
+                    const prev = this.prevValues[i];
+                    const prevD = this.prevDerivatives[i];
+                    const dx = (lm.x - prev.x) * this.f;
+                    const dy = (lm.y - prev.y) * this.f;
+                    const dz = (lm.z - prev.z) * this.f;
+                    const edx = prevD.x + this.alpha(1.0) * (dx - prevD.x);
+                    const edy = prevD.y + this.alpha(1.0) * (dy - prevD.y);
+                    const edz = prevD.z + this.alpha(1.0) * (dz - prevD.z);
+                    this.prevDerivatives[i] = { x: edx, y: edy, z: edz };
+                    const cutoffX = this.minCutoff + this.beta * Math.abs(edx);
+                    const cutoffY = this.minCutoff + this.beta * Math.abs(edy);
+                    const cutoffZ = this.minCutoff + this.beta * Math.abs(edz);
+                    const rx = prev.x + this.alpha(cutoffX) * (lm.x - prev.x);
+                    const ry = prev.y + this.alpha(cutoffY) * (lm.y - prev.y);
+                    const rz = prev.z + this.alpha(cutoffZ) * (lm.z - prev.z);
+                    this.prevValues[i] = { x: rx, y: ry, z: rz };
+                    return { x: rx, y: ry, z: rz, visibility: lm.visibility };
+                });
+            }
+        }
 
         const video = document.getElementById('webcam');
         const statusEl = document.getElementById('status');
@@ -978,7 +1016,7 @@
 
             if (leftGuard && rightGuard) {
                 blockLevel = 2; // FULL BOXER GUARD
-                guardEl.innerText = "GUARD: BOLT-LOCKED";
+                guardEl.innerText = "GUARD: FULL";
                 guardEl.className = "full";
             } else if (leftGuard || rightGuard) {
                 blockLevel = 1; // FRAGILE GUARD

@@ -1,7 +1,10 @@
-<html lang="en"><head>
+<html lang="en">
+
+<head>
+
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Astartes MoCap - MediaPipe</title>
+    <title>Astartes MoCap - MediaPipe, working version</title>
     <style>
         body {
             margin: 0;
@@ -64,7 +67,10 @@
             <div class="hint">WASD to Move • Right Click to Steer<br>Drag to orbit • Scroll to zoom</div>
             <button id="calibBtn">CALIBRATE (T-POSE)</button>
             <div id="guardStatus" class="fragile">GUARD: FRAGILE</div>
-        <button id="swordBtn">EQUIP CHAINSWORD</button><button id="trackBtn">SPATIAL TRACKING: OFF</button><button id="spawnBtn">SPAWN TARGET DUMMY</button><button id="camBtn">CAMERA: ORBIT</button><button id="spawnEnemyBtn">SPAWN ENEMY BOT</button></div>
+            <button id="swordBtn">EQUIP CHAINSWORD</button><button id="trackBtn">SPATIAL TRACKING: OFF</button><button
+                id="spawnBtn">SPAWN TARGET DUMMY</button><button id="camBtn">CAMERA: ORBIT</button><button
+                id="spawnEnemyBtn">SPAWN ENEMY BOT</button>
+        </div>
     </div>
     <div id="combatBanner" class="active hit">SLAM PREP</div>
     <div id="enemyHPHUD" style="display: none; left: 2162.22px; top: 439.409px;">1%</div>
@@ -1364,5 +1370,3 @@
         initMediaPipe();
         animate();
     </script>
-
-

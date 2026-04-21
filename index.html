@@ -1,0 +1,1368 @@
+<html lang="en"><head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Astartes MoCap - MediaPipe</title>
+    <style>
+        body {
+            margin: 0;
+            background: #050505;
+            overflow: hidden;
+            font-family: 'Segoe UI', sans-serif;
+            color: white;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        #overlay {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            z-index: 10;
+            pointer-events: none;
+        }
+
+        #status {
+            font-weight: bold;
+            color: #d4af37;
+            text-shadow: 1px 1px 3px black;
+            font-size: 1.1rem;
+        }
+
+        h2 {
+            margin: 0 0 5px 0;
+            color: #d4af37;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+        }
+
+        video {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            width: 240px;
+            border: 2px solid #d4af37;
+            border-radius: 8px;
+            transform: scaleX(-1);
+        }
+
+        .hint {
+            font-size: 0.75rem;
+            color: #888;
+            margin-top: 4px;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="overlay">
+        <button id="toggleMenuBtn" title="Toggle Menu">≡</button>
+        <div id="menuContent">
+            <h2>Astartes MoCap</h2>
+            <div id="status" style="color: rgb(0, 255, 170);">MoCap Active!</div>
+            <div class="hint">WASD to Move • Right Click to Steer<br>Drag to orbit • Scroll to zoom</div>
+            <button id="calibBtn">CALIBRATE (T-POSE)</button>
+            <div id="guardStatus" class="fragile">GUARD: FRAGILE</div>
+        <button id="swordBtn">EQUIP CHAINSWORD</button><button id="trackBtn">SPATIAL TRACKING: OFF</button><button id="spawnBtn">SPAWN TARGET DUMMY</button><button id="camBtn">CAMERA: ORBIT</button><button id="spawnEnemyBtn">SPAWN ENEMY BOT</button></div>
+    </div>
+    <div id="combatBanner" class="active hit">SLAM PREP</div>
+    <div id="enemyHPHUD" style="display: none; left: 2162.22px; top: 439.409px;">1%</div>
+    <video id="webcam" autoplay="" playsinline=""></video>
+
+    <style>
+        #calibBtn,
+        #swordBtn,
+        #camBtn,
+        #trackBtn,
+        #spawnBtn,
+        #spawnEnemyBtn {
+            margin-top: 10px;
+            background: #d4af37;
+            border: none;
+            color: black;
+            padding: 8px 16px;
+            font-weight: bold;
+            cursor: pointer;
+            pointer-events: auto;
+            border-radius: 4px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            transition: all 0.2s;
+            width: 100%;
+        }
+
+        #calibBtn:hover,
+        #swordBtn:hover,
+        #camBtn:hover,
+        #trackBtn:hover,
+        #spawnBtn:hover,
+        #spawnEnemyBtn:hover {
+            background: #fff;
+            box-shadow: 0 0 15px #d4af37;
+        }
+
+        #calibBtn:active,
+        #swordBtn:active,
+        #camBtn:active,
+        #trackBtn:active,
+        #spawnBtn:active,
+        #spawnEnemyBtn:active {
+            transform: scale(0.95);
+        }
+
+        #swordBtn {
+            background: #880000;
+            color: white;
+            margin-top: 5px;
+        }
+
+        #camBtn,
+        #spawnBtn {
+            background: #222222;
+            color: #d4af37;
+            border: 1px solid #d4af37;
+            margin-top: 5px;
+        }
+
+        #trackBtn {
+            background: #111111;
+            color: #aaa;
+            border: 1px solid #555;
+            margin-top: 5px;
+        }
+
+        #spawnEnemyBtn {
+            background: #440000;
+            color: #ff3300;
+            border: 1px solid #ff3300;
+            margin-top: 5px;
+            box-shadow: 0 0 10px rgba(255, 0, 0, 0.2);
+        }
+
+        #gripStatus {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 10px;
+            font-family: 'Outfit', sans-serif;
+            font-size: 14px;
+            border: 1px solid #444;
+            border-radius: 5px;
+            text-align: right;
+            pointer-events: none;
+            z-index: 100;
+        }
+
+        #gripStatus div {
+            margin-bottom: 5px;
+        }
+
+        .grip-open {
+            color: #888;
+        }
+
+        .grip-closed {
+            color: #00ffaa;
+            font-weight: bold;
+            text-shadow: 0 0 5px #00ffaa;
+        }
+
+        /* COLLAPSE LOGIC */
+        #toggleMenuBtn {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 30px !important;
+            height: 30px;
+            padding: 0 !important;
+            margin: 0 !important;
+            background: #222 !important;
+            color: #d4af37 !important;
+            border: 1px solid #d4af37 !important;
+            z-index: 100;
+            pointer-events: auto;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+
+        #overlay.collapsed #menuContent {
+            display: none;
+        }
+
+        #overlay.collapsed {
+            width: 30px;
+            height: 30px;
+        }
+
+        #menuContent {
+            margin-top: 40px;
+            transition: opacity 0.2s;
+        }
+
+        #swordBtn.equipped {
+            background: #aa0000;
+            box-shadow: 0 0 11px #ff0000;
+        }
+
+        #trackBtn.active {
+            background: #d4af37;
+            color: black;
+            box-shadow: 0 0 11px #d4af37;
+        }
+
+        #guardStatus {
+            margin-top: 15px;
+            font-weight: bold;
+            text-align: center;
+            padding: 8px;
+            border-radius: 4px;
+            background: rgba(0, 0, 0, 0.5);
+            border: 1px solid #444;
+            color: #888;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            transition: all 0.2s;
+        }
+
+        #guardStatus.fragile {
+            color: #ffd700;
+            border-color: #ffd700;
+            box-shadow: 0 0 10px rgba(255, 215, 0, 0.3);
+            background: rgba(255, 215, 0, 0.1);
+        }
+
+        #guardStatus.full {
+            color: #00ffff;
+            border-color: #00ffff;
+            box-shadow: 0 0 15px rgba(0, 255, 255, 0.5);
+            background: rgba(0, 255, 255, 0.1);
+        }
+
+        #combatBanner {
+            position: absolute;
+            top: 25px;
+            right: 25px;
+            z-index: 100;
+            font-size: 1.4rem;
+            font-weight: 900;
+            font-family: 'Segoe UI Black', sans-serif;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            pointer-events: none;
+            text-shadow: 0 0 10px black;
+            opacity: 0.6;
+            transition: all 0.1s;
+            text-align: right;
+            border-right: 4px solid #fff;
+            padding-right: 15px;
+        }
+
+        #combatBanner.active {
+            opacity: 1;
+            transform: scale(1.1);
+        }
+
+        #combatBanner.hit {
+            color: #fff;
+            border-right-color: #fff;
+        }
+
+        #combatBanner.haymaker {
+            color: #ff3300;
+            text-shadow: 0 0 20px #ff3300;
+            border-right-color: #ff3300;
+        }
+
+        #combatBanner.flash {
+            animation: bannerFlash 0.3s ease-out;
+            opacity: 1;
+        }
+
+        @keyframes bannerFlash {
+            0% {
+                transform: scale(1.4);
+                filter: brightness(3);
+            }
+
+            100% {
+                transform: scale(1);
+                filter: brightness(1);
+            }
+        }
+
+        #enemyHPHUD {
+            position: absolute;
+            z-index: 95;
+            color: #ff3300;
+            font-weight: 900;
+            font-family: 'Segoe UI Black', sans-serif;
+            font-size: 1.2rem;
+            text-shadow: 2px 2px 4px black;
+            pointer-events: none;
+            display: none;
+            padding: 2px 8px;
+            border-bottom: 2px solid #ff3300;
+            background: rgba(0, 0, 0, 0.4);
+        }
+    </style>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+
+    <script type="module">
+        import { FilesetResolver, PoseLandmarker } from 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/+esm';
+        import { LandmarkFilter } from './js/filter.js';
+
+        const video = document.getElementById('webcam');
+        const statusEl = document.getElementById('status');
+
+        // =========================================================
+        // 1. MATERIALS
+        // =========================================================
+        function createTex(type) {
+            const s = 512; const c = document.createElement('canvas'); c.width = s; c.height = s;
+            const ctx = c.getContext('2d');
+            if (type === 'armor') {
+                const g = ctx.createLinearGradient(0, 0, 0, s);
+                g.addColorStop(0, '#153a78'); g.addColorStop(1, '#0d2650');
+                ctx.fillStyle = g; ctx.fillRect(0, 0, s, s);
+                ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+                for (let i = 0; i < 60; i++) { ctx.beginPath(); ctx.moveTo(Math.random() * s, Math.random() * s); ctx.lineTo(Math.random() * s, Math.random() * s); ctx.stroke(); }
+            } else if (type === 'metal') {
+                ctx.fillStyle = '#333'; ctx.fillRect(0, 0, s, s);
+                ctx.fillStyle = '#555'; for (let i = 0; i < 1000; i++) ctx.fillRect(Math.random() * s, Math.random() * s, 2, 2);
+            }
+            return new THREE.CanvasTexture(c);
+        }
+
+        const MAT = {
+            blue: new THREE.MeshStandardMaterial({ map: createTex('armor'), roughness: 0.4, metalness: 0.3 }),
+            pack: new THREE.MeshStandardMaterial({ color: 0x393939, roughness: 0.45, metalness: 1 }),
+            gold: new THREE.MeshStandardMaterial({ color: 0xd4af37, roughness: 0.3, metalness: 0.9 }),
+            metal: new THREE.MeshStandardMaterial({ map: createTex('metal'), roughness: 0.6, metalness: 0.6 }),
+            black: new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.9, metalness: 0.1 }),
+            lens: new THREE.MeshBasicMaterial({ color: 0xff0000 }),
+            wax: new THREE.MeshStandardMaterial({ color: 0xaa0000, roughness: 0.3 }),
+            paper: new THREE.MeshStandardMaterial({ color: 0xeeddaa, roughness: 0.9 }),
+            swordBody: new THREE.MeshStandardMaterial({ color: 0x333333, metalness: 0.7 }),
+            swordEdge: new THREE.MeshStandardMaterial({ color: 0x990000, metalness: 0.5 }),
+            // TRAITOR PALETTE
+            crimson: new THREE.MeshStandardMaterial({ color: 0x880000, roughness: 0.4, metalness: 0.3 }),
+            bronze: new THREE.MeshStandardMaterial({ color: 0xcd7f32, roughness: 0.3, metalness: 0.8 }),
+            eyeGlow: new THREE.MeshBasicMaterial({ color: 0xff3300 })
+        };
+
+        // =========================================================
+        function createMarine(isEnemy = false) {
+            const armorMat = isEnemy ? MAT.crimson : MAT.blue;
+            const trimMat = isEnemy ? MAT.bronze : MAT.gold;
+            const lensMat = isEnemy ? MAT.eyeGlow : MAT.lens;
+
+            const root = new THREE.Group();
+            const hips = new THREE.Group(); hips.name = 'hips'; hips.position.y = 1.7; root.add(hips);
+            const pelvis = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.25, 0.35, 8), armorMat);
+            pelvis.rotation.z = Math.PI / 2; hips.add(pelvis);
+            const belt = new THREE.Mesh(new THREE.CylinderGeometry(0.30, 0.30, 0.15, 8), MAT.black);
+            belt.rotation.z = Math.PI / 2; hips.add(belt);
+
+            function createLeg(side) {
+                const legGroup = new THREE.Group();
+                legGroup.position.set(0.32 * side, 0, 0);
+                legGroup.name = (side === 1) ? "thigh_L" : "thigh_R";
+                const thigh = new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.24, 0.55, 12), armorMat);
+                thigh.position.y = -0.3;
+                const joint = new THREE.Mesh(new THREE.SphereGeometry(0.2), MAT.black);
+                const kneeGroup = new THREE.Group();
+                kneeGroup.position.y = -0.65;
+                kneeGroup.name = (side === 1) ? "knee_L" : "knee_R";
+                const kneeBall = new THREE.Mesh(new THREE.SphereGeometry(0.24), MAT.metal);
+                const kneePad = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.25, 0.15), armorMat);
+                kneePad.position.set(0, 0, 0.18); kneeGroup.add(kneeBall, kneePad);
+                const shin = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.38, 0.7, 12), armorMat);
+                shin.position.y = -0.45; kneeGroup.add(shin);
+                const bootGroup = new THREE.Group();
+                bootGroup.position.set(0, -0.9, 0.05);
+                bootGroup.name = (side === 1) ? "foot_L" : "foot_R";
+                const mainBoot = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.3, 0.7), armorMat);
+                const toeCap = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.15, 0.3), armorMat);
+                toeCap.position.set(0, -0.075, 0.25);
+                bootGroup.add(mainBoot, toeCap); kneeGroup.add(bootGroup);
+                legGroup.add(joint, thigh, kneeGroup);
+                return legGroup;
+            }
+            hips.add(createLeg(1), createLeg(-1));
+
+            // TORSO
+            const spine = new THREE.Group(); spine.name = 'spine'; hips.add(spine);
+            const absGroup = new THREE.Group(); absGroup.position.y = 0.2; spine.add(absGroup);
+            const absCore = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.26, 0.35, 16), MAT.black);
+            absGroup.add(absCore);
+            const chestGroup = new THREE.Group(); chestGroup.name = 'chest'; chestGroup.position.y = 0.55; spine.add(chestGroup);
+            const backPlate = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.6, 0.3), armorMat);
+            backPlate.position.z = -0.15; backPlate.rotation.x = -0.2; chestGroup.add(backPlate);
+            function createPec(side) {
+                const pec = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.37, 0.15), armorMat);
+                pec.position.set(0.1 * side, -0.08, 0.25); pec.rotation.y = 0.3 * side; pec.rotation.x = 0.2; pec.rotation.z = 0.03 * side;
+                return pec;
+            }
+            chestGroup.add(createPec(1), createPec(-1));
+            const sternum = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.25, 0.12), armorMat);
+            sternum.position.set(0, 0.1, 0.1); chestGroup.add(sternum);
+            function createFlank(side) {
+                const flank = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.55, 0.35), armorMat);
+                flank.position.set(0.28 * side, 0, 0); flank.rotation.y = 0.1 * side; return flank;
+            }
+            chestGroup.add(createFlank(1), createFlank(-1));
+            const gorgetRim = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.45, 0.15, 16, 1, true), armorMat);
+            gorgetRim.position.y = 0.38; chestGroup.add(gorgetRim);
+
+            // HEAD
+            const headGroup = new THREE.Group(); headGroup.name = 'head'; headGroup.position.y = 0.65; chestGroup.add(headGroup);
+            const redBlock = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.32, 0.32), lensMat);
+            headGroup.add(redBlock);
+
+
+            // ARMS
+            function createArm(side) {
+                const shoulder = new THREE.Group();
+                shoulder.name = (side === 1) ? 'shoulder_L' : 'shoulder_R';
+                shoulder.position.set(0.65 * side, 0.45, 0);
+                // Pauldron
+                const pGeo = new THREE.SphereGeometry(0.42, 32, 32, 0, Math.PI * 2, 0, 1.8);
+                const pDome = new THREE.Mesh(pGeo, armorMat);
+                pDome.position.y = -0.05; pDome.scale.set(0.8, 0.8, 0.8);
+                const pTrim = new THREE.Mesh(new THREE.TorusGeometry(0.42, 0.035, 12, 48), trimMat);
+                pTrim.rotation.x = Math.PI / 2; pTrim.position.y = -0.05; pTrim.scale.set(0.8, 0.8, 1.5);
+                shoulder.add(pDome, pTrim);
+                // Arm group
+                const armGroup = new THREE.Group(); armGroup.position.y = -0.12; shoulder.add(armGroup);
+                const bicepCore = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.15, 0.35, 16), MAT.black);
+                bicepCore.position.y = -0.18; armGroup.add(bicepCore);
+                // Elbow
+                const elbowGroup = new THREE.Group();
+                elbowGroup.name = (side === 1) ? 'elbow_L' : 'elbow_R';
+                elbowGroup.position.y = -0.4; armGroup.add(elbowGroup);
+                const elbowJoint = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.14, 0.15, 16), MAT.black);
+                elbowJoint.rotation.z = Math.PI / 2; elbowGroup.add(elbowJoint);
+                // Forearm
+                const forearm = new THREE.Mesh(new THREE.CylinderGeometry(0.20, 0.26, 0.45, 16), armorMat);
+                forearm.position.y = -0.28; elbowGroup.add(forearm);
+                // Hand
+                const handGroup = new THREE.Group();
+                handGroup.name = (side === 1) ? 'hand_L' : 'hand_R';
+                handGroup.position.y = -0.58; elbowGroup.add(handGroup);
+                const fist = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.28, 0.14), MAT.black);
+                handGroup.add(fist);
+
+                // CHAINSWORD PROP
+                if (side === -1) { // Right hand
+                    // Using the full Space Marine Chainsword imported from 144hz
+                    const sword = createChainsword();
+                    sword.name = 'chainsword';
+                    sword.position.set(0.0, 0.1, 0.05);
+                    sword.rotation.set(0, 0, -Math.PI / 2); // Rotate to standard sword grip instead of reverse-knife grip
+                    sword.scale.set(0.6, 0.6, 0.6); // Scale down slightly to fit the rig
+                    sword.visible = false;
+                    handGroup.add(sword);
+                }
+                return shoulder;
+            }
+            chestGroup.add(createArm(1), createArm(-1));
+
+            root.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+            return root;
+        }
+
+        function createChainsword() {
+            const sword = new THREE.Group();
+
+            // Materials using the predefined MAT properties
+            const bodyMat = MAT.swordBody || new THREE.MeshStandardMaterial({ color: 0x333333, metalness: 0.7 });
+            const edgeMat = MAT.swordEdge || new THREE.MeshStandardMaterial({ color: 0x990000, metalness: 0.5 });
+            const metalMat = MAT.metal;
+            const goldMat = MAT.gold;
+
+            // 1. MAIN HOUSING (The heavy block)
+            const body = new THREE.Mesh(new THREE.BoxGeometry(0.12, 1.0, 0.05), bodyMat);
+            body.position.y = 0.5;
+            sword.add(body);
+
+            // 2. THE CUTTING EDGE (The Red Trim)
+            const edge = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.9, 0.06), edgeMat);
+            edge.position.set(0.06, 0.52, 0);
+            sword.add(edge);
+
+            // 3. THE RIPPER TEETH
+            const toothGeo = new THREE.ConeGeometry(0.025, 0.06, 4);
+            for (let i = 0; i < 12; i++) {
+                const tooth = new THREE.Mesh(toothGeo, MAT.metal);
+                tooth.position.set(0.08, 0.15 + (i * 0.07), 0);
+                tooth.rotation.z = -Math.PI / 2;
+                sword.add(tooth);
+            }
+
+            // 4. SIMPLE HILT & POMMEL
+            const hilt = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.25, 12), MAT.black);
+            hilt.position.y = -0.12;
+            sword.add(hilt);
+
+            const guard = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.04, 0.08), bodyMat);
+            guard.position.y = 0.02;
+            sword.add(guard);
+
+            const pommel = new THREE.Mesh(new THREE.SphereGeometry(0.04, 8, 8), goldMat);
+            pommel.position.y = -0.24;
+            sword.add(pommel);
+
+            return sword;
+        }
+
+        function buildRigInterface(model) {
+            return {
+                root: model,
+                hips: model.getObjectByName('hips'),
+                spine: model.getObjectByName('spine'),
+                chest: model.getObjectByName('chest'),
+                head: model.getObjectByName('head'),
+                legs: {
+                    L: { thigh: model.getObjectByName('thigh_L'), knee: model.getObjectByName('knee_L'), foot: model.getObjectByName('foot_L') },
+                    R: { thigh: model.getObjectByName('thigh_R'), knee: model.getObjectByName('knee_R'), foot: model.getObjectByName('foot_R') }
+                },
+                arms: {
+                    L: { shoulder: model.getObjectByName('shoulder_L'), elbow: model.getObjectByName('elbow_L'), hand: model.getObjectByName('hand_L') },
+                    R: { shoulder: model.getObjectByName('shoulder_R'), elbow: model.getObjectByName('elbow_R'), hand: model.getObjectByName('hand_R') }
+                }
+            };
+        }
+
+        // =========================================================
+        // 3. THREE.JS SCENE
+        // =========================================================
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x0a0a0a);
+        scene.fog = new THREE.Fog(0x0a0a0a, 8, 25);
+
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.01, 1000);
+        camera.position.set(0, 2.0, 5);
+
+        // GRID FLOOR
+        const grid = new THREE.GridHelper(50, 50, 0x333333, 0x111111);
+        scene.add(grid);
+        const ground = new THREE.Mesh(new THREE.PlaneGeometry(100, 100), new THREE.MeshStandardMaterial({ color: 0x050505, roughness: 0.9 }));
+        ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true;
+        scene.add(ground);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        document.body.appendChild(renderer.domElement);
+
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.target.set(0, 1.1, 0);
+        controls.enableDamping = true;
+
+        // Simplified High-Visibility Lighting
+        scene.add(new THREE.HemisphereLight(0xffffff, 0x444444, 1.5));
+        scene.add(new THREE.AmbientLight(0xffffff, 0.4));
+
+
+        // =========================================================
+        // 4. SPAWN MARINE + RIG
+        // =========================================================
+        const marineModel = createMarine();
+        scene.add(marineModel);
+        const rig = buildRigInterface(marineModel);
+
+        // =========================================================
+        // 4.5 COMBAT SYSTEM (Hitboxes & Dummy)
+        // =========================================================
+        let combatHitbox = new THREE.Box3();
+        let targetDummy = null;
+        let dummyHitbox = new THREE.Box3();
+
+        let enemyBot = null;
+        let enemyHitbox = new THREE.Box3();
+        let enemyHP = 100;
+        let enemyStagger = 0;
+
+        let combatCooldown = 0;
+        const particles = [];
+        const particleGeo = new THREE.BoxGeometry(0.04, 0.04, 0.04);
+
+        function spawnSparks(position, colorHex = 0xffaa00) {
+            for (let i = 0; i < 8; i++) {
+                const p = new THREE.Mesh(particleGeo, new THREE.MeshBasicMaterial({ color: colorHex }));
+                p.position.copy(position);
+                p.velocity = new THREE.Vector3(
+                    (Math.random() - 0.5) * 5,
+                    (Math.random()) * 5,
+                    (Math.random() - 0.5) * 5
+                );
+                p.life = 1.0;
+                scene.add(p);
+                particles.push(p);
+            }
+        }
+
+        function showCombatMessage(msg, type = 'hit', isDirectHit = false) {
+            const banner = document.getElementById('combatBanner');
+            banner.innerText = msg;
+            banner.className = 'active ' + type;
+            if (isDirectHit) {
+                banner.classList.add('flash');
+                setTimeout(() => { banner.classList.remove('flash'); }, 300);
+            }
+        }
+
+        function flashMarine(model, colorHex) {
+            model.traverse(o => {
+                if (o.isMesh && o.material.emissive) {
+                    o.material.emissive.setHex(colorHex);
+                    setTimeout(() => { if (o.material) o.material.emissive.setHex(0x000000); }, 150);
+                }
+            });
+        }
+
+        function spawnTargetDummy() {
+            if (targetDummy) scene.remove(targetDummy);
+
+            // Big dummy: 1.2m wide, 2.2m tall
+            const dummyGeo = new THREE.BoxGeometry(1.2, 2.2, 0.6);
+            const dummyMat = new THREE.MeshStandardMaterial({ color: 0x0044aa, roughness: 0.9 });
+            targetDummy = new THREE.Mesh(dummyGeo, dummyMat);
+
+            // Calculate spawn from chest position, advancing 1.5m
+            rig.root.updateMatrixWorld(true);
+            const chestPos = new THREE.Vector3();
+            rig.chest.getWorldPosition(chestPos);
+
+            const forward = new THREE.Vector3(0, 0, -1);
+            forward.applyQuaternion(rig.hips.quaternion);
+            forward.normalize().multiplyScalar(1.5);
+
+            targetDummy.position.copy(chestPos).add(forward);
+            targetDummy.position.y = 1.1;
+
+            scene.add(targetDummy);
+            console.log("Dummy Spawned 1.5m in front of chest!");
+        }
+
+        // =========================================================
+        // 5. JITTER DAMPENER (One-Euro Filter)
+        // =========================================================
+        // Reduced dampening for faster response (increased minCutoff and beta)
+        const poseFilter = new LandmarkFilter(33, 30, 0.5, 5.0);
+
+        // =========================================================
+        // 6. RETARGETING: MediaPipe -> Rig Rotations
+        // =========================================================
+        const _vUp = new THREE.Vector3(0, 1, 0);
+        const _vDown = new THREE.Vector3(0, -1, 0);
+        const _vForward = new THREE.Vector3(0, 0, 1);
+
+        const SCALE = 1.5;
+        const OFFSET_Y = 1.2;
+
+        let calibOffset = new THREE.Vector3(0, 0, 0);
+        let calibDepth = 1.0;
+        let isCalibrated = false;
+        let calibTimer = 0;
+        let swordToggle = false;
+        let is3rdPerson = false;
+        let spatialTrackingActive = false;
+
+        // --- COMBAT STATE ---
+        let blockLevel = 0; // 0: None, 1: Fragile, 2: Full
+        const guardEl = document.getElementById('guardStatus');
+
+        // --- NEW MOVEMENT STATE ---
+        const playerWorldPos = new THREE.Vector3(0, 0, 0);
+        let playerYaw = 0;
+        let moveSpeed = 0;
+        const MAX_SPEED = 2.5; // Space Marine weighted speed
+        const MOMENTUM = 0.92;
+        let stompPhase = 0;
+
+        // VELOCITY TRACKING FOR ATTACKS
+        let lastLWrist = new THREE.Vector3();
+        let lastRWrist = new THREE.Vector3();
+        let lastLAnkle = new THREE.Vector3();
+        let lastRAnkle = new THREE.Vector3();
+        let wristVelL = { v: 0, y: 0, z: 0 };
+        let wristVelR = { v: 0, y: 0, z: 0 };
+        let ankleVelL = { v: 0, y: 0, z: 0 };
+        let ankleVelR = { v: 0, y: 0, z: 0 };
+
+        const keys = { w: false, a: false, s: false, d: false };
+        let isRightClickDown = false;
+
+        window.addEventListener('keydown', (e) => { keys[e.key.toLowerCase()] = true; });
+        window.addEventListener('keyup', (e) => { keys[e.key.toLowerCase()] = false; });
+        window.addEventListener('mousedown', (e) => { if (e.button === 2) isRightClickDown = true; });
+        window.addEventListener('mouseup', (e) => { if (e.button === 2) isRightClickDown = false; });
+        window.addEventListener('contextmenu', (e) => e.preventDefault()); // Disable context menu for right-click steering
+
+        const overlay = document.getElementById('overlay');
+        const menuContent = document.getElementById('menuContent');
+        const toggleMenuBtn = document.getElementById('toggleMenuBtn');
+
+        toggleMenuBtn.onclick = () => {
+            overlay.classList.toggle('collapsed');
+            toggleMenuBtn.innerText = overlay.classList.contains('collapsed') ? '≡' : '×';
+        };
+
+        const swordBtn = document.createElement('button');
+        swordBtn.id = 'swordBtn'; swordBtn.innerText = 'EQUIP CHAINSWORD';
+        menuContent.appendChild(swordBtn);
+
+        const trackBtn = document.createElement('button');
+        trackBtn.id = 'trackBtn'; trackBtn.innerText = 'SPATIAL TRACKING: OFF';
+        menuContent.appendChild(trackBtn);
+
+        const spawnBtn = document.createElement('button');
+        spawnBtn.id = 'spawnBtn'; spawnBtn.innerText = 'SPAWN TARGET DUMMY';
+        menuContent.appendChild(spawnBtn);
+
+        const camBtn = document.createElement('button');
+        camBtn.id = 'camBtn'; camBtn.innerText = 'CAMERA: ORBIT';
+        menuContent.appendChild(camBtn);
+
+        const spawnEnemyBtn = document.createElement('button');
+        spawnEnemyBtn.id = 'spawnEnemyBtn'; spawnEnemyBtn.innerText = 'SPAWN ENEMY BOT';
+        menuContent.appendChild(spawnEnemyBtn);
+
+        swordBtn.onclick = () => {
+            swordToggle = !swordToggle;
+            const s = marineModel.getObjectByName('chainsword');
+            if (s) s.visible = swordToggle;
+            swordBtn.classList.toggle('equipped', swordToggle);
+            swordBtn.innerText = swordToggle ? 'STOW CHAINSWORD' : 'EQUIP CHAINSWORD';
+        };
+
+        spawnEnemyBtn.onclick = () => {
+            spawnEnemyBot();
+        };
+
+        camBtn.onclick = () => {
+            is3rdPerson = !is3rdPerson;
+            camBtn.innerText = is3rdPerson ? 'CAMERA: 3RD PERSON' : 'CAMERA: ORBIT';
+            controls.enabled = !is3rdPerson;
+            if (!is3rdPerson) {
+                // Reset to standard orbit
+                camera.position.set(0, 2.0, 5);
+                controls.target.copy(rig.hips.position);
+            }
+        };
+
+        trackBtn.onclick = () => {
+            spatialTrackingActive = !spatialTrackingActive;
+            trackBtn.classList.toggle('active', spatialTrackingActive);
+            trackBtn.innerText = spatialTrackingActive ? 'SPATIAL TRACKING: ON' : 'SPATIAL TRACKING: OFF';
+        };
+
+        spawnBtn.onclick = () => {
+            spawnTargetDummy();
+        };
+
+        function mp(landmark) {
+            return new THREE.Vector3(
+                -landmark.x * SCALE,
+                -landmark.y * SCALE + OFFSET_Y,
+                -landmark.z * SCALE
+            );
+        }
+
+        function applyMocapToRig(marks, normalized) {
+            // 0. Auto-Calibration (2s delay)
+            if (!isCalibrated) {
+                calibTimer += 1 / 60;
+                if (calibTimer > 2.0) {
+                    const lS = normalized[11];
+                    const rS = normalized[12];
+                    const sDist = Math.sqrt((lS.x - rS.x) ** 2 + (lS.y - rS.y) ** 2);
+                    calibDepth = sDist;
+
+                    const lH = normalized[23];
+                    const rH = normalized[24];
+                    calibOffset.set((lH.x + rH.x) / 2, (lH.y + rH.y) / 2, 0);
+
+                    isCalibrated = true;
+                    statusEl.innerText = "AUTO-CALIBRATED!";
+                    setTimeout(() => { statusEl.innerText = "MoCap Active!"; }, 2000);
+                }
+                statusEl.innerText = "STAND STILL (CALIBRATING... " + (2.0 - calibTimer).toFixed(1) + ")";
+            }
+
+            // 1. Root Positioning (PERFECT MIRROR MAPPING)
+            const lHip = mp(marks[24]);
+            const rHip = mp(marks[23]);
+            const hipMidWorld = lHip.clone().lerp(rHip, 0.5);
+
+            // Set Center Lock Baseline OR Spatial Tracking + Keyboard Movement
+            let finalHipPos = playerWorldPos.clone();
+            finalHipPos.y = 1.0;
+
+            if (spatialTrackingActive) {
+                // Calculate Global Translation from Normalized Landmarks
+                const lS_n = normalized[12]; // L
+                const rS_n = normalized[11]; // R
+                const lH_n = normalized[24]; // L
+                const rH_n = normalized[23]; // R
+                const hipMid_n = { x: (lH_n.x + rH_n.x) / 2, y: (lH_n.y + rH_n.y) / 2 };
+                const shoulderDist_n = Math.sqrt((lS_n.x - rS_n.x) ** 2 + (lS_n.y - rS_n.y) ** 2);
+
+                const tx = -(hipMid_n.x - calibOffset.x) * 5.0;
+                const tz = (shoulderDist_n / calibDepth - 1.0) * 8.0;
+
+                // Mix in spatial offset to the player world pos
+                finalHipPos.x += tx;
+                finalHipPos.z += tz; // Depth
+            }
+
+            rig.hips.position.copy(finalHipPos);
+            // 2. Body Orientation
+            const lShoulder = mp(marks[12]);
+            const rShoulder = mp(marks[11]);
+            const shoulderMid = lShoulder.clone().lerp(rShoulder, 0.5);
+
+            const torsoUp = shoulderMid.clone().sub(hipMidWorld).normalize();
+            const basisX = lShoulder.clone().sub(rShoulder).normalize();
+            const basisZ = new THREE.Vector3().crossVectors(basisX, torsoUp).normalize();
+
+            const rootM = new THREE.Matrix4().makeBasis(basisX, torsoUp, basisZ);
+            rig.hips.quaternion.setFromRotationMatrix(rootM);
+
+            rig.spine.quaternion.copy(rig.hips.quaternion).invert();
+            const localTorsoUp = torsoUp.clone().applyQuaternion(rig.hips.quaternion.clone().invert());
+            rig.spine.quaternion.setFromUnitVectors(_vUp, localTorsoUp);
+
+            // 3. HEAD
+            const nose = mp(marks[0]);
+            const lEar = mp(marks[7]);
+            const rEar = mp(marks[8]);
+            const headUp = torsoUp;
+            const headX = lEar.clone().sub(rEar).normalize();
+            const headForward = nose.clone().sub(lEar.clone().lerp(rEar, 0.5)).normalize();
+            const headM = new THREE.Matrix4().makeBasis(headX, headUp, headForward);
+            const worldHeadQ = new THREE.Quaternion().setFromRotationMatrix(headM);
+            const chestWorldQ = new THREE.Quaternion();
+            rig.chest.getWorldQuaternion(chestWorldQ);
+            rig.head.quaternion.copy(chestWorldQ).invert().multiply(worldHeadQ);
+
+            // 4. LIMBS
+            const getLocalQ = (parent, dir, baseDir = _vDown) => {
+                const worldQ = new THREE.Quaternion().setFromUnitVectors(baseDir, dir);
+                const pWorldQ = new THREE.Quaternion();
+                parent.getWorldQuaternion(pWorldQ);
+                return pWorldQ.invert().multiply(worldQ);
+            };
+            const lElbow = mp(marks[14]);
+            const rElbow = mp(marks[13]);
+            const lWrist = mp(marks[16]);
+            const rWrist = mp(marks[15]);
+
+            // --- GESTURE & VELOCITY TRACKING ---
+            const dtVel = 0.016;
+
+            wristVelL = {
+                v: lWrist.distanceTo(lastLWrist) / dtVel,
+                y: (lWrist.y - lastLWrist.y) / dtVel,
+                z: (lWrist.z - lastLWrist.z) / dtVel
+            };
+            wristVelR = {
+                v: rWrist.distanceTo(lastRWrist) / dtVel,
+                y: (rWrist.y - lastRWrist.y) / dtVel,
+                z: (rWrist.z - lastRWrist.z) / dtVel
+            };
+
+            const lAnkle = mp(marks[28]);
+            const rAnkle = mp(marks[27]);
+            ankleVelL = {
+                v: lAnkle.distanceTo(lastLAnkle) / dtVel,
+                y: (lAnkle.y - lastLAnkle.y) / dtVel,
+                z: (lAnkle.z - lastLAnkle.z) / dtVel
+            };
+            ankleVelR = {
+                v: rAnkle.distanceTo(lastRAnkle) / dtVel,
+                y: (rAnkle.y - lastRAnkle.y) / dtVel,
+                z: (rAnkle.z - lastRAnkle.z) / dtVel
+            };
+
+            lastLWrist.copy(lWrist);
+            lastRWrist.copy(rWrist);
+            lastLAnkle.copy(lAnkle);
+            lastRAnkle.copy(rAnkle);
+            const lKnee = mp(marks[26]);
+            const rKnee = mp(marks[25]);
+
+            rig.arms.L.shoulder.quaternion.copy(getLocalQ(rig.arms.L.shoulder.parent, lElbow.clone().sub(lShoulder).normalize()));
+            rig.arms.L.elbow.quaternion.copy(getLocalQ(rig.arms.L.elbow.parent, lWrist.clone().sub(lElbow).normalize()));
+
+            rig.arms.R.shoulder.quaternion.copy(getLocalQ(rig.arms.R.shoulder.parent, rElbow.clone().sub(rShoulder).normalize()));
+            rig.arms.R.elbow.quaternion.copy(getLocalQ(rig.arms.R.elbow.parent, rWrist.clone().sub(rElbow).normalize()));
+
+            rig.legs.L.thigh.quaternion.copy(getLocalQ(rig.legs.L.thigh.parent, lKnee.clone().sub(lHip).normalize()));
+            rig.legs.L.knee.quaternion.copy(getLocalQ(rig.legs.L.knee.parent, lAnkle.clone().sub(lKnee).normalize()));
+
+            rig.legs.R.thigh.quaternion.copy(getLocalQ(rig.legs.R.thigh.parent, rKnee.clone().sub(rHip).normalize()));
+            rig.legs.R.knee.quaternion.copy(getLocalQ(rig.legs.R.knee.parent, rAnkle.clone().sub(rKnee).normalize()));
+
+            // --- FOOT ANTI-CLIPPING POST-POSE ---
+            // Now that legs are posed, push Marine up so lowest foot vertex touches y=0 floor
+            rig.root.updateMatrixWorld(true);
+            const lFootPos = new THREE.Vector3();
+            rig.legs.L.foot.getWorldPosition(lFootPos);
+            const rFootPos = new THREE.Vector3();
+            rig.legs.R.foot.getWorldPosition(rFootPos);
+
+            const lowestActualY = Math.min(lFootPos.y, rFootPos.y);
+            const bootRadiusOffset = 0.15; // Box geometry for boot implies center is ~0.15 above ground
+            if (lowestActualY < bootRadiusOffset) {
+                // If the foot sinks below, push hip UP exactly by the clipped amount
+                rig.hips.position.y += (bootRadiusOffset - lowestActualY);
+            } else {
+                // Allows jumping slightly if both feet are very high up
+                rig.hips.position.y -= (lowestActualY - bootRadiusOffset);
+            }
+
+            // --- TIERED GUARD DETECTION ---
+            const chestWorldPos = new THREE.Vector3();
+            rig.chest.getWorldPosition(chestWorldPos);
+
+            // --- NEW: WORLD COORDINATE SYNC ---
+            // We must add playerWorldPos to landmarks because MediaPipe outputs are stationary.
+            // This ensures that when the Marine moves, your tracking space moves with him.
+            const lWristWorld = lWrist.clone().add(playerWorldPos);
+            const rWristWorld = rWrist.clone().add(playerWorldPos);
+
+            // RELIABILITY FIX: Check distance in World Space
+            const distL = lWristWorld.distanceTo(chestWorldPos);
+            const distR = rWristWorld.distanceTo(chestWorldPos);
+
+            const guardThresh = 0.75; // Expanded for easier snap-back
+            const heightMin = chestWorldPos.y - 0.3;
+            const heightMax = chestWorldPos.y + 0.7;
+
+            const isGuard = (wristWorld, dist) => {
+                const near = dist < guardThresh;
+                const correctHeight = wristWorld.y > heightMin && wristWorld.y < heightMax;
+                return near && correctHeight;
+            };
+
+            const leftGuard = isGuard(lWristWorld, distL);
+            const rightGuard = isGuard(rWristWorld, distR);
+
+            // --- LIVE ACTION DETECTION (HUD) ---
+            const l = wristVelL; const r = wristVelR;
+            const main = (l.v > r.v) ? l : r;
+            let currentAction = "READY";
+            if (main.y > 2.5) currentAction = "UPPERCUT PREP";
+            else if (main.y < -2.5) currentAction = "SLAM PREP";
+            else if (main.z > 3.0) currentAction = "STRIKING";
+            else if (leftGuard && rightGuard) currentAction = "DEFENSIVE";
+
+            const banner = document.getElementById('combatBanner');
+            if (!banner.classList.contains('flash')) {
+                banner.innerText = currentAction;
+            }
+
+
+            if (leftGuard && rightGuard) {
+                blockLevel = 2; // FULL BOXER GUARD
+                guardEl.innerText = "GUARD: BOLT-LOCKED";
+                guardEl.className = "full";
+            } else if (leftGuard || rightGuard) {
+                blockLevel = 1; // FRAGILE GUARD
+                guardEl.innerText = "GUARD: FRAGILE";
+                guardEl.className = "fragile";
+            } else {
+                blockLevel = 0; // STANDING
+                guardEl.innerText = "GUARD: STANDING";
+                guardEl.className = "";
+            }
+        }
+
+        // =========================================================
+        // 7. MEDIAPIPE
+        // =========================================================
+        let poseLandmarker;
+
+        async function initMediaPipe() {
+            try {
+                statusEl.innerText = "Loading AI Model...";
+                const vision = await FilesetResolver.forVisionTasks(
+                    "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm"
+                );
+                poseLandmarker = await PoseLandmarker.createFromOptions(vision, {
+                    baseOptions: {
+                        modelAssetPath: "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/1/pose_landmarker_full.task",
+                        delegate: "GPU"
+                    },
+                    runningMode: "VIDEO",
+                    numPoses: 1
+                });
+                statusEl.innerText = "Requesting Webcam...";
+                const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } });
+                video.srcObject = stream;
+                video.addEventListener('loadeddata', () => {
+                    statusEl.innerText = "MoCap Active!";
+                    statusEl.style.color = "#00ffaa";
+                    predictLoop();
+                });
+            } catch (err) {
+                statusEl.innerText = "Error: " + err.message;
+                statusEl.style.color = "red";
+                console.error(err);
+            }
+        }
+
+        // =========================================================
+        // 8. TRACKING LOOP
+        // =========================================================
+        let lastVideoTime = -1;
+        let lastRawMarks = null;
+
+        function predictLoop() {
+            const t = performance.now();
+            if (lastVideoTime !== video.currentTime) {
+                lastVideoTime = video.currentTime;
+                const result = poseLandmarker.detectForVideo(video, t);
+                if (result.worldLandmarks && result.worldLandmarks.length > 0) {
+                    lastRawMarks = result.worldLandmarks[0];
+                    const smooth = poseFilter.filter(lastRawMarks, t);
+                    applyMocapToRig(smooth, result.landmarks[0]);
+                }
+            }
+            requestAnimationFrame(predictLoop);
+        }
+
+        // =========================================================
+        // 9. RENDER LOOP
+        // =========================================================
+        function spawnEnemyBot() {
+            if (enemyBot) scene.remove(enemyBot);
+            enemyBot = createMarine(true);
+
+            // Spawn 4m in front of player's current orientation
+            const spawnPos = playerWorldPos.clone();
+            const forward = new THREE.Vector3(0, 0, 1); // Flipped: Rig facing +Z makes this forward
+            forward.applyAxisAngle(new THREE.Vector3(0, 1, 0), playerYaw);
+            spawnPos.addScaledVector(forward, 4.0);
+
+            enemyBot.position.copy(spawnPos);
+            enemyBot.position.y = 0;
+
+            enemyHP = 150;
+            enemyStagger = 30; // 0.5s stagger on spawn so it doesn't instantly charge
+            enemyBot.isAttacking = false;
+            enemyBot.attackCooldown = 0;
+            scene.add(enemyBot);
+            console.log("Chaos Marine Enemy Bot Spawned in front of player!");
+        }
+
+        function checkCollisions() {
+            if (combatCooldown > 0) return;
+
+            const limbs = [
+                { obj: rig.arms.L.hand, vel: wristVelL, type: 'hand' },
+                { obj: rig.arms.R.hand, vel: wristVelR, type: 'hand' },
+                { obj: rig.legs.L.foot, vel: ankleVelL, type: 'foot' },
+                { obj: rig.legs.R.foot, vel: ankleVelR, type: 'foot' }
+            ];
+
+            // 1. DUMMY CHECK
+            if (targetDummy) {
+                dummyHitbox.setFromObject(targetDummy);
+                for (const limb of limbs) {
+                    if (limb.type !== 'hand') continue;
+                    combatHitbox.setFromObject(limb.obj);
+                    combatHitbox.expandByScalar(0.12);
+                    if (combatHitbox.intersectsBox(dummyHitbox)) {
+                        combatCooldown = 20;
+                        const hitC = new THREE.Vector3(); combatHitbox.getCenter(hitC);
+                        spawnSparks(hitC);
+                        targetDummy.material.color.setHex(0xcc5500);
+                        setTimeout(() => { if (targetDummy) targetDummy.material.color.setHex(0x0044aa); }, 150);
+                        return;
+                    }
+                }
+            }
+
+            // 2. ENEMY BOT CHECK
+            if (enemyBot && enemyHP > 0) {
+                enemyHitbox.setFromObject(enemyBot);
+                for (const limb of limbs) {
+                    combatHitbox.setFromObject(limb.obj);
+
+                    // Foot gets a much larger hitbox because legs are lower down
+                    const expansion = (limb.type === 'foot') ? 0.25 : 0.12;
+                    combatHitbox.expandByScalar(expansion);
+
+                    if (combatHitbox.intersectsBox(enemyHitbox)) {
+                        const hitC = new THREE.Vector3(); combatHitbox.getCenter(hitC);
+
+                        let msg = "HIT LANDED!";
+                        let type = "hit";
+                        let dmg = 5; // Standard Punch
+                        let drag = 30;
+
+                        if (limb.type === 'foot') {
+                            // KICK: Lowered threshold (1.5) for high-latency webcams
+                            if (limb.vel.v > 1.5) {
+                                msg = "CRUSHING KICK!";
+                                type = "haymaker";
+                                dmg = 20; // Massive damage
+                                drag = 70;
+                            } else {
+                                continue;
+                            }
+                        } else {
+                            if (limb.vel.y > 3.0) { msg = "UPPERCUT!"; type = "haymaker"; dmg = 12; drag = 60; }
+                            else if (limb.vel.y < -3.0) { msg = "SLAM!"; type = "haymaker"; dmg = 15; drag = 60; }
+                            else if (limb.vel.z > 3.5) { msg = "HAYMAKER!"; type = "haymaker"; dmg = 12; drag = 60; }
+                            else if (limb.vel.v > 1.2) { msg = "PUNCH!"; type = "hit"; }
+                            else continue;
+                        }
+
+                        showCombatMessage(msg, type, true);
+                        enemyHP -= dmg;
+                        enemyStagger = drag;
+
+                        combatCooldown = 20;
+                        spawnSparks(hitC, (type === "haymaker") ? 0xff4422 : 0xffaa00);
+
+                        const pushDir = new THREE.Vector3().subVectors(enemyBot.position, playerWorldPos).setY(0).normalize();
+                        enemyBot.position.addScaledVector(pushDir, 0.5);
+
+                        enemyBot.traverse(child => { if (child.isMesh && child.material.emissive) child.material.emissive.setHex(0xff0000); });
+                        setTimeout(() => {
+                            if (enemyBot) enemyBot.traverse(child => { if (child.isMesh && child.material.emissive) child.material.emissive.setHex(0x000000); });
+                        }, 150);
+
+                        if (enemyHP <= 0) {
+                            enemyBot.rotation.x = -Math.PI / 2;
+                            enemyBot.position.y = 0.5;
+                            setTimeout(() => { if (enemyBot) scene.remove(enemyBot); enemyBot = null; }, 4000);
+                        }
+                        return;
+                    }
+                }
+            }
+        }
+
+        function updateEnemyAI(dt) {
+            if (!enemyBot || enemyHP <= 0) return;
+            if (enemyStagger > 0) {
+                enemyStagger--;
+                return;
+            }
+
+            if (enemyBot.attackCooldown > 0) enemyBot.attackCooldown--;
+
+            const targetPos = playerWorldPos.clone();
+            const enemyPos = enemyBot.position.clone();
+            const dist = enemyPos.distanceTo(targetPos);
+
+            // Face Player
+            enemyBot.lookAt(targetPos.x, enemyBot.position.y, targetPos.z);
+
+            // Walk towards player if > 1.8m
+            if (dist > 1.8) {
+                const dir = new THREE.Vector3().subVectors(targetPos, enemyPos).normalize();
+                enemyBot.position.addScaledVector(dir, 1.2 * dt);
+
+                // Heavy walk oscillation
+                const wave = Math.abs(Math.sin(performance.now() * 0.005)) * 0.05;
+                enemyBot.position.y = wave;
+            } else {
+                enemyBot.position.y = 0;
+                // --- ENEMY ATTACK LOGIC ---
+                if (enemyBot.attackCooldown <= 0) {
+                    processEnemyAttack();
+                    enemyBot.attackCooldown = 120; // 2s cooldown
+                }
+            }
+        }
+
+        function processEnemyAttack() {
+            if (!enemyBot) return;
+
+            // 1. VISUAL WARNING (Enemy turns red slightly before impact)
+            enemyBot.traverse(child => { if (child.isMesh) child.material.emissive?.setHex(0x440000); });
+
+            setTimeout(() => {
+                if (!enemyBot || enemyHP <= 0) return;
+
+                // Reset color
+                enemyBot.traverse(child => { if (child.isMesh) child.material.emissive?.setHex(0x000000); });
+
+                const dist = enemyBot.position.distanceTo(playerWorldPos);
+                if (dist < 2.2) { // Within strike range
+
+                    if (blockLevel === 2) {
+                        // FULL BLOCK: Enemy gets staggered!
+                        statusEl.innerText = "BLOCK: MAXIMUM ABSORPTION!";
+                        statusEl.style.color = "#00ffff";
+
+                        // BLUE FLASH & BLUE SPARKS per user request
+                        flashMarine(marineModel, 0x00ffff);
+                        spawnSparks(playerWorldPos.clone().add({ x: 0, y: 1.5, z: 0 }), 0x00ffff);
+
+                        enemyStagger = 45; // 0.75s stun
+                        const repelDir = new THREE.Vector3().subVectors(enemyBot.position, playerWorldPos).setY(0).normalize();
+                        enemyBot.position.addScaledVector(repelDir, 0.8);
+
+                        setTimeout(() => {
+                            statusEl.innerText = "MoCap Active!";
+                            statusEl.style.color = "#00ffaa";
+                        }, 10); // Cooldown removed but structure preserved
+                    }
+                    else if (blockLevel === 1) {
+                        // FRAGILE BLOCK: Player survives but jitters
+                        statusEl.innerText = "BLOCK: FRAGILE (ARMOR STRAIN!)";
+                        statusEl.style.color = "#ffd700";
+                        playerWorldPos.addScaledVector(new THREE.Vector3().subVectors(playerWorldPos, enemyBot.position).setY(0).normalize(), 0.1);
+
+                        // RED SPARKS for partial block
+                        spawnSparks(playerWorldPos.clone().add({ x: 0, y: 1.5, z: 0 }), 0xff0000);
+
+                        setTimeout(() => {
+                            statusEl.innerText = "MoCap Active!";
+                            statusEl.style.color = "#00ffaa";
+                        }, 10); // Cooldown removed but structure preserved
+                    }
+                    else {
+                        // NO BLOCK: Direct Hit!
+                        const prevStatus = statusEl.innerText;
+                        statusEl.innerText = "DIRECT HIT: CRITICAL SYSTEM DAMAGE!";
+                        statusEl.style.color = "#ff3333";
+
+                        // FLASH RED ONLY ON DIRECT HIT
+                        flashMarine(marineModel, 0xff0000);
+                        scene.background.setHex(0x440000);
+
+                        // Apply a temporary visual impulse
+                        const pushDir = new THREE.Vector3().subVectors(playerWorldPos, enemyBot.position).setY(0).normalize();
+                        playerWorldPos.addScaledVector(pushDir, 0.4);
+
+                        setTimeout(() => {
+                            scene.background.setHex(0x0a0a0a);
+                            statusEl.innerText = "MoCap Active!";
+                            statusEl.style.color = "#00ffaa";
+                        }, 10); // Cooldown removed but structure preserved
+                    }
+                }
+            }, 400); // 400ms windup
+        }
+
+        function updateVFX(dt) {
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const p = particles[i];
+                p.life -= dt * 2.0;
+                if (p.life <= 0) {
+                    scene.remove(p);
+                    particles.splice(i, 1);
+                } else {
+                    p.velocity.y -= 9.8 * dt; // Gravity
+                    p.position.addScaledVector(p.velocity, dt);
+                }
+            }
+        }
+
+        let lastTime = performance.now();
+        function animate() {
+            requestAnimationFrame(animate);
+            const now = performance.now();
+            const dt = (now - lastTime) / 1000.0;
+            lastTime = now;
+
+            if (combatCooldown > 0) combatCooldown--;
+            checkCollisions();
+            updateVFX(dt);
+            updateEnemyAI(dt);
+
+            // --- MOVEMENT LOGIC ---
+            let moveDir = new THREE.Vector3(0, 0, 0);
+
+            if (is3rdPerson) {
+                // 3rd Person: Turning based on A/D
+                if (keys.a) playerYaw += 2.5 * dt;
+                if (keys.d) playerYaw -= 2.5 * dt;
+
+                if (keys.w) moveDir.z = -1;
+                if (keys.s) moveDir.z = 1;
+                // Rotate moveDir relative to playerYaw
+                moveDir.applyAxisAngle(new THREE.Vector3(0, 1, 0), playerYaw);
+            } else {
+                // Orbit: W moves in camera direction
+                const camFlat = new THREE.Vector3();
+                camera.getWorldDirection(camFlat);
+                camFlat.y = 0; camFlat.normalize();
+                const camSide = new THREE.Vector3().crossVectors(new THREE.Vector3(0, 1, 0), camFlat).normalize();
+
+                if (keys.w) moveDir.add(camFlat);
+                if (keys.s) moveDir.sub(camFlat);
+                if (keys.a) moveDir.add(camSide);
+                if (keys.d) moveDir.sub(camSide);
+
+                if (isRightClickDown && moveDir.length() > 0) {
+                    const targetYaw = Math.atan2(moveDir.x, moveDir.z);
+                    playerYaw = THREE.MathUtils.lerp(playerYaw, targetYaw, 0.1);
+                }
+            }
+
+
+            if (moveDir.length() > 0) {
+                moveDir.normalize();
+                moveSpeed = THREE.MathUtils.lerp(moveSpeed, MAX_SPEED, 0.1);
+                // Weighted Stomp effect (Oscillation)
+                stompPhase += dt * 10.0;
+                const stomp = Math.abs(Math.sin(stompPhase)) * 0.08;
+                rig.hips.position.y += stomp;
+            } else {
+                moveSpeed *= MOMENTUM;
+            }
+            playerWorldPos.addScaledVector(moveDir, moveSpeed * dt);
+
+            if (is3rdPerson) {
+                // Stabilized 3rd Person Cam: Pivot based on playerYaw, not twitchy hips
+                const camDist = 3.5;
+                const camTargetY = 1.8;
+                // ...
+            }
+
+            // --- ENEMY HP HUD PROJECTION ---
+            if (enemyBot && enemyHP > 0) {
+                const hpEl = document.getElementById('enemyHPHUD');
+                hpEl.style.display = 'block';
+                hpEl.innerText = `${Math.ceil((enemyHP / 150) * 100)}%`;
+
+                const pos = enemyBot.position.clone();
+                pos.y += 2.2; // Head height
+                pos.project(camera);
+
+                const x = (pos.x * 0.5 + 0.5) * window.innerWidth;
+                const y = (pos.y * -0.5 + 0.5) * window.innerHeight;
+                hpEl.style.left = x + 'px';
+                hpEl.style.top = y + 'px';
+            } else {
+                document.getElementById('enemyHPHUD').style.display = 'none';
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        initMediaPipe();
+        animate();
+    </script>
+
+
